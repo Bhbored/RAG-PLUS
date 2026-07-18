@@ -9,6 +9,7 @@ public class AppDbContext : DbContext
 
     public DbSet<RawScrapedData> RawScrapedData => Set<RawScrapedData>();
     public DbSet<CleanedData> CleanedData => Set<CleanedData>();
+    public DbSet<DocumentChunk> DocumentChunks => Set<DocumentChunk>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -23,6 +24,12 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(e => e.Url);
             entity.HasIndex(e => new { e.Url, e.Version }).IsUnique();
+        });
+
+        modelBuilder.Entity<DocumentChunk>(entity =>
+        {
+            entity.HasIndex(e => e.SourceUrl);
+            entity.HasIndex(e => e.CleanDataId);
         });
     }
 }

@@ -92,6 +92,7 @@ services:
       ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=ragplus;Username=postgres;Password=123456"
       ASPNETCORE_ENVIRONMENT: "Development"
       OpenAI__ApiKey: "${OPENAI_API_KEY}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
     restart: unless-stopped
 
   webui:

@@ -191,13 +191,59 @@ cleaned_data     : 6 rows (version 1 for each URL)
 
 ---
 
-## Next: Phase 4
+## Phase 4 Complete - RAG Pipeline
 
-- Enable pgvector extension in PostgreSQL
-- Create `document_chunks` table with vector(3072)
-- Implement chunking service (overlap-based, 500 tokens, 50 overlap)
-- Add OpenAI embedding generation (text-embedding-3-large)
-- Build RAG service (embed question → vector search → build context → GPT-4o → citations)
-- Wire up Semantic Kernel in the API project
+**Date:** 2026-07-18  
+**Status:** COMPLETE  
+
+### What Was Built
+
+| Component | File | Purpose |
+|---|---|---|
+| **pgvector** | PostgreSQL ext | `CREATE EXTENSION vector;` — vector(3072) type for embeddings |
+| **ChunkingService** | `Processor/Services/ChunkingService.cs` | Overlap-based: 500 tokens, 50 overlap, paragraph boundaries |
+| **EmbeddingService** | `Processor/Services/EmbeddingService.cs` | Calls OpenAI `text-embedding-3-large` (3072-dim) |
+| **DocumentChunk** | `Processor/Models/DocumentChunk.cs` | EF entity mapping to `document_chunks` table with `vector(3072)` |
+| **Indexing** | `Processor/Services/ScrapedDataProcessor.cs` | After cleaning: chunk → embed → store in pgvector |
+| **RagService** | `Api/Services/RagService.cs` | Full RAG: embed question → cosine search → context → GPT-4o → citations |
+| **RagController** | `Api/Controllers/RagController.cs` | `POST /api/rag/ask { question }` → `{ answer, citations[] }` |
+| **ApiDbContext** | `Api/Data/ApiDbContext.cs` | EF Core context for vector search queries |
+
+### Pipeline Flow (Verified)
+
+```
+Cleaned content → ChunkingService (500/50 overlap)
+  → EmbeddingService (text-embedding-3-large)
+  → document_chunks table (vector(3072) + pgvector index)
+
+User question → EmbeddingService → cosine similarity search
+  → Top-8 chunks → prompt context → GPT-4o → answer with citations
+```
+
+### Verified In DB
+
+```
+document_chunks: 50 chunks across 6 URLs
+  quotes.toscrape.com/     : 10 chunks
+  quotes.toscrape.com/page/2/ : 18 chunks
+  books.toscrape.com/      : 4 chunks
+  (+ 3 more URLs)
+```
+
+### Tested RAG Query
+
+```
+POST /api/rag/ask { "question": "What are some quotes about love?" }
+→ Answer with [Source: https://quotes.toscrape.com/] citations
+```
+
+---
+
+## Next: Phase 5
+
+- Add `/api/raw-data` + `/api/processed-data` endpoints to API
+- Build out React UI: Dashboard (queue depth, stats), Search page, Chat page
+- Wire frontend to API endpoints
+
 
 

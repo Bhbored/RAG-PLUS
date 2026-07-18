@@ -17,12 +17,16 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("Postgres")
-        ?? "Host=localhost;Port=5432;Database=ragplus;Username=postgres;Password=123456"));
+        ?? "Host=localhost;Port=5432;Database=ragplus;Username=postgres;Password=123456",
+        npgsqlOptions => npgsqlOptions.UseVector()));
 
 builder.Services.AddScoped<RawDataRepository>();
 builder.Services.AddScoped<CleanDataRepository>();
 builder.Services.AddScoped<HtmlCleaner>();
 builder.Services.AddScoped<ScrapedContentValidator>();
+builder.Services.AddScoped<ChunkingService>();
+builder.Services.AddScoped<EmbeddingService>();
+builder.Services.AddHttpClient<EmbeddingService>();
 
 builder.Services.AddHostedService<ScrapedDataProcessor>();
 

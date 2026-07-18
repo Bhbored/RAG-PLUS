@@ -2,6 +2,7 @@ using System.Text.Json;
 using HtmlAgilityPack;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Pgvector;
 using Processor.Data;
 using Processor.Models;
 using Processor.Services;
@@ -157,7 +158,54 @@ public class ScrapedDataProcessor : BackgroundService
             "Processed {Url} → version {Version} (title: {Title}, body: {BodyLen} chars, tables: {TableCount})",
             url, version, structured.Title, structured.BodyText.Length, structured.Tables.Count);
 
-        // 5. Indexing happens in Phase 4 (pgvector)
+        // 5. Chunk + embed + store vectors
+        await IndexForRagAsync(cleaned, structured.BodyText, scope, stoppingToken);
+    }
+
+    private async Task IndexForRagAsync(
+        CleanedData cleaned,
+        string bodyText,
+        IServiceScope scope,
+        CancellationToken ct)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var chunker = scope.ServiceProvider.GetRequiredService<ChunkingService>();
+        var embedder = scope.ServiceProvider.GetRequiredService<EmbeddingService>();
+
+        var chunks = chunker.ChunkContent(bodyText, cleaned.Url);
+
+        foreach (var chunk in chunks)
+        {
+            float[] vector;
+            try
+            {
+                vector = await embedder.GenerateEmbeddingAsync(chunk.Text);
+            }
+            catch
+            {
+                _logger.LogWarning("Failed to generate embedding for chunk {Index} of {Url}",
+                    chunk.ChunkIndex, cleaned.Url);
+                continue;
+            }
+
+            var doc = new DocumentChunk
+            {
+                Content = chunk.Text,
+                ContentVector = new Pgvector.Vector(vector),
+                SourceUrl = chunk.SourceUrl,
+                ChunkIndex = chunk.ChunkIndex,
+                CleanDataId = cleaned.Id,
+            };
+
+            db.DocumentChunks.Add(doc);
+            await Task.Delay(50, ct); // rate limit
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Indexed {Count} chunks for {Url}",
+            chunks.Count, cleaned.Url);
     }
 }
 
