@@ -283,7 +283,26 @@ POST /api/rag/ask { "question": "What are some quotes about love?" }
 | Phase 3: Data Processing | ✅ |
 | Phase 4: RAG Pipeline | ✅ |
 | Phase 5: API & Web UI | ✅ |
-| Phase 6: Target Sites & Compliance | ⬜ (seed-500.ts ready, test + report remaining) |
+| Phase 6: Target Sites & Compliance | ✅ | docs/ created: architecture, sequence diagram, ethics report, video script |
+| All Phases Complete | ✅ | Full system operational end-to-end |
+
+## Final Project Stats
+
+- **29 source files** across 4 services (Scraper/API/Processor/WebUI)
+- **6 Docker containers** (Postgres, Redis, Scraper, Processor, API, WebUI)
+- **4 API endpoints** (stats, raw data, cleaned data, search, RAG chat)
+- **3 UI pages** (Dashboard, Search, Chat)
+- **3 target websites** (quotes.toscrape.com, books.toscrape.com, Wikipedia)
+- **50 indexed chunks** across 6 URLs with vector embeddings
+- **Horizontal scaling** demonstrated: 1→3 workers
+
+## Documentation
+
+- `docs/architecture.md` — system architecture + sequence diagram + failure paths
+- `docs/ethics-compliance.md` — robots.txt, rate limiting, data privacy
+- `docs/video-script.md` — 5-10 minute demo walkthrough
+- `road-map.md` — full execution plan with all phases
+- `progress.md` — this file, current state for AI agents
 
 
 

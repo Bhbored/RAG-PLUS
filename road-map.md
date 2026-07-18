@@ -121,177 +121,49 @@ docker compose --env-file .env --profile scale up -d --scale scraper-worker=3
 
 ---
 
-# Phase 3: Data Processing (.NET 8 Background Service)
+# Phase 3: Data Processing ✅ COMPLETED
 
-### 3.1 Service: `ScrapedDataProcessor` (IHostedService)
-
-Runs continuously in its own container, separate from the API.
-
-```csharp
-// Processor/Services/ScrapedDataProcessor.cs
-public class ScrapedDataProcessor : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        await _redis.SubscribeAsync("raw-data-ready", async (channel, message) =>
-        {
-            var data = JsonSerializer.Deserialize<RawDataNotification>(message);
-            await ProcessAndIndexAsync(data.Url, data.Id);
-        });
-    }
-
-    private async Task ProcessAndIndexAsync(string url, Guid rawId)
-    {
-        var raw = await _rawRepo.GetByIdAsync(rawId);          // Fetch from PostgreSQL
-        var doc = new HtmlDocument();
-        doc.LoadHtml(raw.Html);
-        var structured = cleaner.Extract(url, doc);            // HtmlAgilityPack
-        var validator = new ScrapedContentValidator();
-        validator.ValidateAndThrow(structured);                // FluentValidation
-        var version = await _cleanRepo.GetNextVersionAsync(url);
-        await _cleanRepo.InsertAsync(cleaned);                 // Append, don't overwrite
-    }
-}
-```
-
-### 3.2 Data Schema (PostgreSQL with EF Core)
-
-```csharp
-public class RawScrapedData
-{
-    public Guid Id { get; set; }
-    public string Url { get; set; }
-    public string Domain { get; set; }
-    public string RawHtml { get; set; }
-    public string ContentHash { get; set; }
-    public int HttpStatus { get; set; }
-    public DateTime ScrapedAt { get; set; }
-    public string WorkerId { get; set; }
-}
-
-public class CleanedData
-{
-    public Guid Id { get; set; }
-    public string Url { get; set; }
-    public string Title { get; set; }
-    public JsonDocument StructuredContent { get; set; }  // JSONB
-    public int Version { get; set; }
-    public DateTime ProcessedAt { get; set; }
-    public List<DataChunk> Chunks { get; set; }
-}
-```
-
-### 3.3 Tasks
-
-- [ ] Implement `ScrapedDataProcessor.cs` - fetch from PostgreSQL, strip boilerplate
-- [ ] Create `HtmlCleaner` service (extract title, body, tables, links)
-- [ ] Add FluentValidation schema validation
-- [ ] Add versioning (append-only, `CleanedData.Version`)
-- [ ] Wire up EF Core DbContext + migrations
+See `progress.md` for implementation details. Pipeline: raw data → HtmlAgilityPack cleaning → FluentValidation → versioned storage in cleaned_data (JSONB).
 
 ---
 
-# Phase 4: RAG Pipeline (.NET 8 + OpenAI + pgvector)
+# Phase 4: RAG Pipeline ✅ COMPLETED
 
-### 4.1 Chunking Strategy: Overlap-Based with Semantic Boundaries
+### 4.1 Chunking: Overlap-Based (500 tokens / 50 overlap, paragraph boundaries)
 
-```csharp
-public List<DataChunk> ChunkContent(string text, string url)
-{
-    const int chunkSize = 500;    // tokens (~2000 chars)
-    const int overlap = 50;       // tokens (~200 chars)
+### 4.2 Vector Storage: pgvector in PostgreSQL
 
-    var paragraphs = text.Split(new[] { "\n\n" }, StringSplitOptions.RemoveEmptyEntries);
-    // Build chunks respecting paragraph boundaries with overlap
-    // PRO: Context preserved, citations accurate
-    // CON: ~10% storage overhead
-}
-```
+`document_chunks` table with `vector(3072)` column + ivfflat index for cosine similarity search.
 
-### 4.2 Vector Storage: pgvector (PostgreSQL)
+### 4.3 OpenAI Integration
 
-Use the `pgvector` extension already installed in PostgreSQL:
+Direct API calls for `text-embedding-3-large` (embeddings) and `gpt-4o` (chat completion). RAG pipeline: embed question → pgvector cosine search → context → GPT-4o → cited answer.
 
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
+### 4.4 RAG Endpoint
 
-CREATE TABLE document_chunks (
-    id UUID PRIMARY KEY,
-    content TEXT NOT NULL,
-    content_vector vector(3072),  -- text-embedding-3-large
-    source_url TEXT NOT NULL,
-    chunk_index INTEGER
-);
+`POST /api/rag/ask { question }` → `{ answer, citations[] }`
 
-CREATE INDEX ON document_chunks USING ivfflat (content_vector vector_cosine_ops);
-```
+---
 
-### 4.3 OpenAI Integration (Semantic Kernel)
+# Phase 5: API & Web UI ✅ COMPLETED
 
-```csharp
-// Program.cs - Uses OpenAI API directly (not Azure OpenAI)
-builder.Services.AddOpenAIChatCompletion(
-    modelId: "gpt-4o",
-    apiKey: builder.Configuration["OpenAI:ApiKey"]);
+### API Endpoints
 
-builder.Services.AddOpenAITextEmbeddingGeneration(
-    modelId: "text-embedding-3-large",
-    apiKey: builder.Configuration["OpenAI:ApiKey"]);
-
-// RAG Service
-public async Task<RagResponse> AskAsync(string question)
-{
-    // 1. Generate question embedding
-    var embedding = await _embeddingService.GenerateEmbeddingAsync(question);
-
-    // 2. Vector similarity search via pgvector
-    var chunks = await _db.DocumentChunks
-        .OrderBy(c => c.ContentVector.CosineDistance(embedding))
-        .Take(8)
-        .ToListAsync();
-
-    // 3. Build context with source citations
-    // 4. Prompt engineering → GPT-4o → parse citations → return
-}
-```
-
-### 4.4 Why pgvector (not Azure AI Search)
-
-| Feature | pgvector | Azure AI Search |
+| Method | Endpoint | Purpose |
 |---|---|---|
-| **Cost** | Free (local Postgres) | ~$0.10/hr |
-| **Setup** | Already installed | Requires Azure account |
-| **Vector search** | Cosine/L2/Inner Product | HNSW |
-| **Hybrid search** | Manual (pg_trgm + vector) | Built-in |
-| **.NET** | EF Core + Npgsql | Separate SDK |
+| `GET` | `/api/stats` | Dashboard stats + Redis queue depth |
+| `GET` | `/api/data/raw` | Paginated raw scraped data |
+| `GET` | `/api/data/cleaned` | Paginated cleaned data |
+| `GET` | `/api/search?q=&type=keyword` | Keyword search with snippets |
+| `POST` | `/api/rag/ask` | RAG Q&A with citations |
+
+### React UI
+
+3 pages fully built: Dashboard (live stats, 5s refresh), Search (keyword, results with source links), Chat (GPT-style, citations, suggestions).
 
 ---
 
-# Phase 5: API & Web UI
-
-### 5.1 ASP.NET Core API Endpoints
-
-```csharp
-app.MapGet("/api/raw-data", async (string url, int? page, IRawDataRepository repo) =>
-    await repo.GetByUrlAsync(url, page));
-
-app.MapGet("/api/processed-data", async (string? domain, int? version, ICleanDataRepository repo) =>
-    await repo.QueryAsync(domain, version));
-
-app.MapPost("/api/rag/ask", async (AskRequest req, IRagService rag) =>
-    await rag.AskAsync(req.Question));
-```
-
-### 5.2 React UI (TypeScript + Vite)
-
-**Pages already scaffolded:**
-1. **Dashboard** — Live queue depth, worker count, crawl stats
-2. **Search** — Keyword / Semantic / Hybrid toggle (Phase 5)
-3. **RAG Chat** — ChatGPT-style with clickable citation chips
-
----
-
-# Phase 6: Target Websites & Compliance
+# Phase 6: Target Websites & Documentation ✅ COMPLETED
 
 | Site Type | Target | Technology | Compliance |
 |---|---|---|---|
@@ -299,9 +171,7 @@ app.MapPost("/api/rag/ask", async (AskRequest req, IRagService rag) =>
 | **Static (more pages)** | `books.toscrape.com` | Cheerio | `robots.txt` allows all. |
 | **Pagination (500+ pages)** | `quotes.toscrape.com/tag/*`, Wikipedia | Cheerio | Wikipedia: use `Crawl-delay`, scrape off-peak. |
 
-### Ethics/Compliance Note:
-
-> Before crawling, the system fetches and parses `robots.txt` using `robots-parser`. If a URL is disallowed or no `User-agent: *` permits access, the job is rejected with `UnrecoverableError`. Per-domain rate limiting enforces a minimum 2-second delay. The scraper identifies as `RagScraperBot/1.0`. No personal data is extracted. Incremental crawling via content hashing minimizes unnecessary server load.
+See `docs/` directory for architecture diagrams, sequence diagrams, ethics report, and video script.
 
 ---
 
@@ -322,15 +192,15 @@ app.MapPost("/api/rag/ask", async (AskRequest req, IRagService rag) =>
 | **Raw data DB** | ✅ PostgreSQL `raw_scraped_data` |
 | **Worker crash recovery** | ✅ BullMQ stalled recovery + 3 retries |
 | **Dead-letter** | ✅ `scrape-dead-letter` + `dead_letter` table |
-| **Strip boilerplate** | ☐ HtmlCleaner service (Phase 3) |
-| **Structured format + validation** | ☐ FluentValidation (Phase 3) |
-| **Versioning** | ☐ CleanedData.Version (Phase 3) |
-| **Deliberate chunking** | ☐ Overlap-based 500/50 (Phase 4) |
-| **Vector DB** | ☐ pgvector in PostgreSQL (Phase 4) |
-| **LLM** | ☐ OpenAI GPT-4o via API key (Phase 4) |
-| **Multi-source synthesis** | ☐ RAG prompt with citations (Phase 4) |
-| **API endpoints** | ☐ Raw, Processed, RAG QA (Phase 5) |
-| **React UI** | ☐ Dashboard, Search, Chat (Phase 5) |
+| **Strip boilerplate** | ✅ HtmlCleaner (HtmlAgilityPack) |
+| **Structured format + validation** | ✅ FluentValidation |
+| **Versioning** | ✅ CleanedData.Version |
+| **Deliberate chunking** | ✅ Overlap-based 500/50 |
+| **Vector DB** | ✅ pgvector in PostgreSQL |
+| **LLM** | ✅ OpenAI GPT-4o via API key |
+| **Multi-source synthesis** | ✅ RAG prompt with citations |
+| **API endpoints** | ✅ Stats, Raw, Cleaned, Search, RAG QA |
+| **React UI** | ✅ Dashboard, Search, Chat |
 
 ---
 
@@ -340,11 +210,11 @@ app.MapPost("/api/rag/ask", async (AskRequest req, IRagService rag) =>
 |---|---|---|
 | 1-2 | Foundation, CI/CD, Docker Compose | ✅ DONE |
 | 3-5 | Scraper (Playwright, BullMQ, rate limit, dedup, DLQ) | ✅ DONE |
-| 6-8 | .NET Processor (EF Core, cleaning, validation, versioning) | ⬜ Next |
-| 9-11 | RAG Pipeline (pgvector, OpenAI, chunking, citations) | ⬜ |
-| 12-14 | API endpoints + React UI | ⬜ |
-| 15-17 | Test on 3 sites, scaling demo, fault injection | ⬜ |
-| 18-20 | Report, diagrams, recording | ⬜ |
+| 6-8 | .NET Processor (EF Core, cleaning, validation, versioning) | ✅ DONE |
+| 9-11 | RAG Pipeline (pgvector, OpenAI, chunking, citations) | ✅ DONE |
+| 12-14 | API endpoints + React UI | ✅ DONE |
+| 15-17 | Test on 3 sites, scaling demo, fault injection | ✅ DONE |
+| 18-20 | Report, diagrams, recording | ✅ DONE |
 
 ---
 

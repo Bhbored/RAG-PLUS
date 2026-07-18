@@ -80,7 +80,6 @@ const scraperWorker = new Worker(
   {
     connection,
     concurrency: 3,
-    limiter: { max: 1, duration: 5000 },
     stalledInterval: 30000,
     removeOnComplete: { age: 3600 },
     removeOnFail: { age: 86400 },
