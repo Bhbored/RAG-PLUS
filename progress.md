@@ -239,11 +239,52 @@ POST /api/rag/ask { "question": "What are some quotes about love?" }
 
 ---
 
-## Next: Phase 5
+## Phase 5 Complete - API Endpoints & React UI
 
-- Add `/api/raw-data` + `/api/processed-data` endpoints to API
-- Build out React UI: Dashboard (queue depth, stats), Search page, Chat page
-- Wire frontend to API endpoints
+**Date:** 2026-07-18  
+**Status:** COMPLETE  
+
+### API Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/stats` | Dashboard stats: raw/cleaned/chunk counts, unique domains, Redis queue depth |
+| `GET` | `/api/data/raw?url=&page=&pageSize=` | Paginated raw scraped data |
+| `GET` | `/api/data/cleaned?domain=&version=` | Paginated cleaned data |
+| `GET` | `/api/search?q=&type=keyword` | Keyword search across document_chunks with snippets |
+| `POST` | `/api/rag/ask` | RAG Q&A with GPT-4o + citations (Phase 4) |
+
+### React UI Pages
+
+| Page | Route | Features |
+|---|---|---|
+| **Dashboard** | `/` | Live stats cards (raw/cleaned/chunks/domains), queue depth from Redis, 5s auto-refresh |
+| **Search** | `/search` | Text input + type toggle, result cards with source URLs + content snippets |
+| **Chat** | `/chat` | Full RAG chat: message history, typing indicator, suggestion chips, clickable citation badges |
+
+### Verified
+
+- [x] `GET /api/stats` → `{rawCount:6, cleanedCount:6, chunkCount:50, queue:{...}}`
+- [x] `GET /api/data/raw?pageSize=2` → paginated raw records
+- [x] `GET /api/search?q=love` → 20 keyword results with snippets
+- [x] WebUI accessible at http://localhost:3000
+- [x] Dashboard shows real-time stats
+- [x] Search page queries API and displays results
+- [x] Chat page sends RAG queries and shows cited answers
+
+---
+
+## All Phases Complete
+
+| Phase | Status |
+|---|---|
+| Phase 1: Foundation & CI/CD | ✅ |
+| Phase 2: Distributed Scraper | ✅ |
+| Phase 3: Data Processing | ✅ |
+| Phase 4: RAG Pipeline | ✅ |
+| Phase 5: API & Web UI | ✅ |
+| Phase 6: Target Sites & Compliance | ⬜ (seed-500.ts ready, test + report remaining) |
+
 
 
 
