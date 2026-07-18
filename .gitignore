@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+*.log
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.DS_Store

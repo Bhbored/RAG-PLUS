@@ -1,0 +1,74 @@
+name: CI - API & Processor
+
+on:
+  push:
+    paths:
+      - 'src/Api/**'
+      - 'src/Processor/**'
+  pull_request:
+    paths:
+      - 'src/Api/**'
+      - 'src/Processor/**'
+
+jobs:
+  api-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Format check
+        run: dotnet format --verify-no-changes --verbosity diagnostic
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release --verbosity normal
+
+      - name: Build Docker image
+        run: |
+          docker build -t ragplus-api:${{ github.sha }} \
+            -f ../../docker/Dockerfile.processor .
+
+  processor-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Processor
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Format check
+        run: dotnet format --verify-no-changes --verbosity diagnostic
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release --verbosity normal
+
+      - name: Build Docker image
+        run: |
+          docker build -t ragplus-processor:${{ github.sha }} \
+            -f ../../docker/Dockerfile.processor .

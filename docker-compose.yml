@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ragplus-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: ragplus
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ragplus-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  scraper:
+    build:
+      context: ../src/Scraper
+      dockerfile: ../../docker/Dockerfile.scraper
+    container_name: ragplus-scraper
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      POSTGRES_URL: "postgresql://postgres:123456@postgres:5432/ragplus"
+    restart: unless-stopped
+
+  processor:
+    build:
+      context: ../src/Processor
+      dockerfile: ../../docker/Dockerfile.processor
+    container_name: ragplus-processor
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Redis: "redis:6379"
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=ragplus;Username=postgres;Password=123456"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../src/Api
+      dockerfile: ../../docker/Dockerfile.processor
+    container_name: ragplus-api
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Redis: "redis:6379"
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=ragplus;Username=postgres;Password=123456"
+      ASPNETCORE_ENVIRONMENT: "Development"
+      OpenAI__ApiKey: "${OPENAI_API_KEY}"
+    restart: unless-stopped
+
+  webui:
+    build:
+      context: ../src/WebUi
+      dockerfile: ../../docker/Dockerfile.webui
+    container_name: ragplus-webui
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
