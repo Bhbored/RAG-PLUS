@@ -64,11 +64,15 @@ const scraperWorker = new Worker(
     // Cache hash in Redis (24h TTL)
     await connection.setex(`hash:${hash}`, 86400, '1');
 
-    // Notify .NET Processor
+    // Notify .NET Processor (URL is enough for lookup if rawId is empty for duplicates)
     await connection.publish(
       'raw-data-ready',
       JSON.stringify({ url, id: rawId || result.id })
     );
+
+    if (!rawId) {
+      return { success: true, url, hash, deduplicated: true };
+    }
 
     console.log(`[${WORKER_ID}] Scraped: ${url}`);
     return { success: true, url, hash, rawId };

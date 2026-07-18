@@ -154,11 +154,50 @@ docker compose --env-file .env --profile scale up -d --scale scraper-worker=3
 
 ---
 
-## Next: Phase 3
+## Phase 3 Complete - Data Processing
 
-- Implement `ScrapedDataProcessor.cs` - fetch from PostgreSQL, strip boilerplate with HtmlAgilityPack
-- Create `HtmlCleaner` service (extract title, body, tables, links, publishDate)
-- Add FluentValidation for schema validation
-- Add versioning logic (append new version, don't overwrite)
-- Wire up EF Core migrations for `CleanedData` table
+**Date:** 2026-07-18  
+**Status:** COMPLETE  
+
+### What Was Built
+
+| Component | File | Purpose |
+|---|---|---|
+| **Models** | `Models/RawScrapedData.cs`, `CleanedData.cs`, `ScrapedContent.cs` | EF Core entities mapping to PostgreSQL tables |
+| **DbContext** | `Data/AppDbContext.cs` | Npgsql EF Core context with indexes |
+| **Repositories** | `Data/RawDataRepository.cs`, `CleanDataRepository.cs` | DB access with URL-based lookup + versioning |
+| **HtmlCleaner** | `Services/HtmlCleaner.cs` | HtmlAgilityPack: strips boilerplate, extracts title/body/tables/links/headings/publishDate |
+| **Validator** | `Validation/ScrapedContentValidator.cs` | FluentValidation: non-empty title, min body length, table validation |
+| **Processor** | `Services/ScrapedDataProcessor.cs` | Full pipeline: backlog catch-up + Pub/Sub real-time listener |
+| **DI wiring** | `Program.cs` | DbContext + repositories + services + auto-migration |
+
+### Pipeline Flow (Verified)
+
+```
+Seed 6 URLs → Scraper stores 6 rows in raw_scraped_data
+  → Processor backlog picks up all 6
+  → HtmlCleaner extracts (title, body text, tables, links)
+  → FluentValidation validates
+  → Gets next version number per URL
+  → Stores 6 rows in cleaned_data (JSONB structured content)
+```
+
+### Verified In DB
+
+```
+raw_scraped_data : 6 rows (quotes.toscrape.com x3, books.toscrape.com x3)
+cleaned_data     : 6 rows (version 1 for each URL)
+```
+
+---
+
+## Next: Phase 4
+
+- Enable pgvector extension in PostgreSQL
+- Create `document_chunks` table with vector(3072)
+- Implement chunking service (overlap-based, 500 tokens, 50 overlap)
+- Add OpenAI embedding generation (text-embedding-3-large)
+- Build RAG service (embed question → vector search → build context → GPT-4o → citations)
+- Wire up Semantic Kernel in the API project
+
 
