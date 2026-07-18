@@ -10,3 +10,4 @@ obj/
 *.suo
 .vs/
 .DS_Store
+docs/video-script.md
