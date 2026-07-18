@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -31,21 +29,41 @@ services:
 
   scraper:
     build:
-      context: ../src/Scraper
-      dockerfile: ../../docker/Dockerfile.scraper
+      context: .
+      dockerfile: ./docker/Dockerfile.scraper
     container_name: ragplus-scraper
     depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      POSTGRES_URL: "postgresql://postgres:123456@postgres:5432/ragplus"
+      WORKER_ID: "worker-main"
+    restart: unless-stopped
+
+  # Scalable scraper replicas (docker compose up -d --scale scraper-worker=3)
+  scraper-worker:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.scraper
+    depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     environment:
       REDIS_URL: "redis://redis:6379"
       POSTGRES_URL: "postgresql://postgres:123456@postgres:5432/ragplus"
     restart: unless-stopped
+    profiles:
+      - scale
 
   processor:
     build:
-      context: ../src/Processor
-      dockerfile: ../../docker/Dockerfile.processor
+      context: .
+      dockerfile: ./docker/Dockerfile.processor
     container_name: ragplus-processor
     depends_on:
       postgres:
@@ -59,8 +77,8 @@ services:
 
   api:
     build:
-      context: ../src/Api
-      dockerfile: ../../docker/Dockerfile.processor
+      context: ./src/Api
+      dockerfile: ./Dockerfile
     container_name: ragplus-api
     ports:
       - "8080:8080"
@@ -78,8 +96,8 @@ services:
 
   webui:
     build:
-      context: ../src/WebUi
-      dockerfile: ../../docker/Dockerfile.webui
+      context: .
+      dockerfile: ./docker/Dockerfile.webui
     container_name: ragplus-webui
     ports:
       - "3000:80"

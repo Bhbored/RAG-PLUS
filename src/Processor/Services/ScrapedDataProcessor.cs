@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 namespace Processor;
@@ -20,7 +22,7 @@ public class ScrapedDataProcessor : BackgroundService
     {
         var subscriber = _redis.GetSubscriber();
 
-        await subscriber.SubscribeAsync("raw-data-ready", async (channel, message) =>
+        await subscriber.SubscribeAsync(RedisChannel.Literal("raw-data-ready"), async (channel, message) =>
         {
             _logger.LogInformation("Received raw-data-ready for channel: {Channel}", channel);
 

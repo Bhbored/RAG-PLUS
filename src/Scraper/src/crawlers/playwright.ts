@@ -3,8 +3,10 @@ import { chromium, Browser, Page } from 'playwright';
 export interface ScrapeResult {
   id: string;
   url: string;
+  html: string;
   normalizedHtml: string;
   title: string;
+  httpStatus: number;
   scrapedAt: string;
 }
 
@@ -18,22 +20,28 @@ export class PlaywrightCrawler {
 
     const page: Page = await this.browser.newPage();
     try {
-      await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+      const response = await page.goto(url, {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+      const httpStatus = response?.status() ?? 200;
 
       const title = await page.title();
       const html = await page.content();
 
       // Normalize: strip scripts and styles
       await page.evaluate(() => {
-        document.querySelectorAll('script, style, noscript').forEach((el) => el.remove());
+        document.querySelectorAll('script, style, noscript').forEach((el: Element) => el.remove());
       });
       const normalizedHtml = await page.content();
 
       return {
         id: crypto.randomUUID(),
         url,
+        html,
         normalizedHtml,
         title,
+        httpStatus,
         scrapedAt: new Date().toISOString(),
       };
     } finally {

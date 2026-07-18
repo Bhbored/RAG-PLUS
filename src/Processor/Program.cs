@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Hosting;
 using Processor;
+using StackExchange.Redis;
 
 var builder = Host.CreateApplicationBuilder(args);
 

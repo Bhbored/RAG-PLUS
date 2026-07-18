@@ -44,12 +44,7 @@ docker/nginx.conf            reverse proxy /api -> api:8080
 - **ci-scraper.yml** - npm ci → eslint → tsc --noEmit → jest → docker build
 - **ci-api.yml** - dotnet restore → format → build → test → docker build (API + Processor parallel jobs)
 
-### 4. Infra
-
-- `infra/provision.sh` - Azure CLI script (optional, for future Azure deployment)
-- `infra/main.bicep` - Azure Bicep template (optional)
-
-### 5. Config Files
+### 4. Config Files
 
 - `docker-compose.yml` - Postgres + Redis + Scraper + Processor + API + WebUI (no Qdrant, no Azure)
 - `.env` - Local env vars (REDIS_URL, POSTGRES_URL, OPENAI_API_KEY)
@@ -97,9 +92,73 @@ Or all-in-one: `docker compose --env-file .env up -d`
 
 ---
 
-## Next: Phase 2
+## Phase 2 Complete - Distributed Web Scraper
 
-- Implement `storeRawData()` in scraper worker (PostgreSQL insert)
-- Add dead-letter queue logic
-- Add Bottleneck rate limiting per domain
-- Test horizontal scaling with multiple worker replicas
+**Date:** 2026-07-18  
+**Status:** COMPLETE  
+
+### What Was Built
+
+| Component | File | Purpose |
+|---|---|---|
+| **PostgreSQL storage** | `src/Scraper/src/db.ts` | Pool connection, `storeRawData()`, `contentHashExists()`, `storeDeadLetter()`, auto-migration |
+| **Rate limiter** | `src/Scraper/src/rate-limiter.ts` | Per-domain Bottleneck instances (2s delay, 60 req/min reservoir) |
+| **Full worker** | `src/Scraper/src/worker.ts` | robots.txt → rate limit → scrape → hash dedup → store → Pub/Sub notify |
+| **Seed script** | `src/Scraper/src/seed.ts` | Enqueues 6 test URLs (quotes.toscrape.com + books.toscrape.com) |
+| **Bulk seed** | `src/Scraper/src/seed-500.ts` | Enqueues 500 URLs across 3 domains (quotes, books, Wikipedia) |
+| **DB schema** | `src/Scraper/migrations/001_create_tables.sql` | `raw_scraped_data` + `dead_letter` tables |
+| **Scrapers updated** | `src/crawlers/playwright.ts`, `cheerio.ts` | Now return `html`, `httpStatus` alongside normalized data |
+
+### Architecture
+
+```
+URL → BullMQ Queue → Worker → robots.txt check → Bottleneck rate limit
+  → Playwright/Cheerio scrape → SHA-256 hash → Redis dedup cache
+  → PostgreSQL INSERT (ON CONFLICT DO NOTHING) → Redis Pub/Sub "raw-data-ready"
+  → .NET Processor picks up
+```
+
+### Failure Handling
+
+| Failure | Mechanism |
+|---|---|
+| **Worker crash** | BullMQ stalled job recovery (30s) → another replica picks up |
+| **Network timeout** | Playwright 30s timeout → BullMQ exponential backoff retry |
+| **HTTP 429 / IP block** | Bottleneck per-domain throttling prevents this |
+| **3 consecutive failures** | Moved to `scrape-dead-letter` Redis list + `dead_letter` PostgreSQL table |
+| **Duplicate content** | SHA-256 hash → Redis cache (24h) + PostgreSQL UNIQUE constraint |
+
+### How to Test Horizontal Scaling
+
+```bash
+# 1. Seed queue with 500 URLs
+cd src/Scraper
+npm run seed:500
+
+# 2. Scale workers (from project root)
+docker compose --env-file .env --profile scale up -d --scale scraper-worker=3
+
+# 3. Watch queue drain
+# Monitor: redis-cli LLEN bull:scrape-queue:waiting
+#   OR check via seed script which prints queue stats
+```
+
+### Verified
+
+- [x] 6 URLs scraped to PostgreSQL (quotes.toscrape.com x3, books.toscrape.com x3)
+- [x] Content hash dedup works (UNIQUE constraint + Redis cache)
+- [x] Dead-letter table created, 0 entries (all successes)
+- [x] BullMQ retries + exponential backoff configured
+- [x] Per-domain Bottleneck rate limiting active
+- [x] Docker Compose `scraper-worker` service ready for `--scale`
+
+---
+
+## Next: Phase 3
+
+- Implement `ScrapedDataProcessor.cs` - fetch from PostgreSQL, strip boilerplate with HtmlAgilityPack
+- Create `HtmlCleaner` service (extract title, body, tables, links, publishDate)
+- Add FluentValidation for schema validation
+- Add versioning logic (append new version, don't overwrite)
+- Wire up EF Core migrations for `CleanedData` table
+

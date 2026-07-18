@@ -24,8 +24,10 @@ export class CheerioCrawler {
     return {
       id: crypto.randomUUID(),
       url,
+      html,
       normalizedHtml,
       title: title || url,
+      httpStatus: response.status,
       scrapedAt: new Date().toISOString(),
     };
   }

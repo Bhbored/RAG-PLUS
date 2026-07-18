@@ -1,10 +1,10 @@
-import robotsParser from 'robots-parser';
+import robotsParser, { Robot } from 'robots-parser';
 
-const parserCache = new Map<string, robotsParser.Robot>();
+const parserCache = new Map<string, Robot>();
 
 export async function getRobotsParser(
   domain: string
-): Promise<robotsParser.Robot> {
+): Promise<Robot> {
   if (parserCache.has(domain)) {
     return parserCache.get(domain)!;
   }
